@@ -45,12 +45,30 @@ jobs:
 
       - name: Update Jira ticket with result
         run: |
-          RESULT=$(cat result.txt | jq -Rs .)  # Escape newlines and special characters
-          echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
-          echo "${RESULT}"
+          RESULT=$(cat result.txt)
+          TICKET_URL="[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]"
           
-          # Convert result into Atlassian Document Format
-          COMMENT_JSON=$(jq -n --arg msg "$RESULT" '{"update": {"comment": [{"add": {"body": {"type": "doc","version": 1,"content": [{"type": "paragraph","content": [{"type": "text","text": $msg}]}]}}}]}}')
+          # Replace raw URL with Jira wiki-style link
+          FORMATTED_RESULT=$(echo "$RESULT" | sed "s|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44|$TICKET_URL|g")
+
+          echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
+          echo "${FORMATTED_RESULT}"
+
+          COMMENT_JSON=$(jq -n --arg msg "$FORMATTED_RESULT" '{
+            "update": {
+              "comment": [{
+                "add": {
+                  "body": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                      {"type": "paragraph", "content": [{"type": "text", "text": $msg}]}
+                    ]
+                  }
+                }
+              }]
+            }
+          }')
 
           echo "Final JSON Payload:"
           echo "$COMMENT_JSON"
@@ -64,3 +82,4 @@ jobs:
           JIRA_USERNAME: ${{ env.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
           JIRA_ISSUE_KEY: ${{ env.JIRA_ISSUE_KEY }}
+
