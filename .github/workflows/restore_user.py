@@ -4,19 +4,19 @@ import os
 import requests
 
 # --- CONFIGURATION ---
-JIRA_BASE_URL = "https://prudential-ps.atlassian.net"
-USERNAME_OR_EMAIL = "srvpssaprjira04@prudential.com.sg"  # Your Jira account email
-API_TOKEN = "ATATT3xFfGF0EFfaYwInM0kTqkiHvhD4_QXqLaarvpjTFpXC6N2l2toDIG8i7wWrlEJXZPlZK4C5dBX57oHgGKMYgXnV5Z1ZCzK-516jefrFQ-1BrqtVV2qViAEBS53U1N4jT45fgaaHayHgwBN7EnZV2DMx6S3pbusSJKHaoo7V72Z91WPVWF8=2F8CF568"
+JIRA_BASE_URL = "https://originenergypoc.atlassian.net"
+USERNAME_OR_EMAIL = "patrick@elegancegroup.co.nz"  # Your Jira account email
+API_TOKEN = "ATATT3xFfGF0ayVQzvx9ey19zYG7_-huXwUsxbFz5J5y4ETKA9qbBqHFsN-C2edzTBWRG_KbhRzzRjMSg6MOxeR0Vah_xawIC7xfpHBV6LNY0jyj2aLTOdx7aqqN6KvvYZls5gSyWZMg8lT7GU3xGmUsq3Wfg0mXygp_L4sC8nBZ4keOTyBQAv8=C51BB456"
 
 # Read TARGET_EMAIL from environment variables (set via the workflow)
 TARGET_EMAIL = os.environ.get("TARGET_EMAIL", "default@example.com")
 
 # Atlassian restore-access endpoint
-ORG_ID = "b4235a52-bd04-12a0-j718-68bd06255171"
+ORG_ID = "ffd0f976-d0a5-418f-8ca5-a1d67cadc185"
 RESTORE_ACCESS_URL_TEMPLATE = "https://api.atlassian.com/admin/v1/orgs/{org_id}/directory/users/{account_id}/restore-access"
 
 # Bearer token for restore-access endpoint
-BEARER_TOKEN = "ATCTT3xFfGN0npB5HwrrcaA3AQvHQrV7r3_11rpJEwqC-gkhudBnLhC9sNbkAu75hYoMm-94-KbGyBOE7delh4bprW3EAKI3c7o5q_fwb4aVgichM4G73ZYQRUK8h-k_A31cYaSg-_RAM1pofsCgKId9gFsZO7PHHcZxqrof2uYWwfwn9ERLSZQ=30AEA3A2"
+BEARER_TOKEN = "ATCTT3xFfGN0BPQVTT4W1STZKHJMEEUr8LkoK_5HqjmtAcKWE5REtelLpufRTeW4sN6pHBSccDMoRBZmHvjvshdfPgdam-K0ghsqjt_Vj44kJzMDtxuPl4eLXN68BUYFA6PE28mb9DTNch7WkVzallRnyxu8yTaAzOaLDgkq5UcIKqZttGNJp98=2208A72D"
 
 def fetch_account_id():
     auth = (USERNAME_OR_EMAIL, API_TOKEN)
