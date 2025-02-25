@@ -48,11 +48,8 @@ jobs:
           RESULT=$(cat result.txt)
           TICKET_URL="[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]"
           
-          # Escape special characters for sed
-          ESCAPED_URL=$(printf '%s\n' "https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44" | sed 's/[\/&]/\\&/g')
-
-          # Replace raw URL with Jira wiki-style link safely
-          FORMATTED_RESULT=$(echo "$RESULT" | sed "s|$ESCAPED_URL|$TICKET_URL|g")
+          # Replace raw URL with Jira wiki-style link using awk (safer than sed)
+          FORMATTED_RESULT=$(echo "$RESULT" | awk -v url="https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44" -v link="$TICKET_URL" '{gsub(url, link)}1')
 
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
           echo "${FORMATTED_RESULT}"
@@ -85,6 +82,7 @@ jobs:
           JIRA_USERNAME: ${{ env.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
           JIRA_ISSUE_KEY: ${{ env.JIRA_ISSUE_KEY }}
+
 
 
 
