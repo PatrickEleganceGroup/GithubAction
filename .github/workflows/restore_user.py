@@ -4,8 +4,8 @@ import os
 import requests
 
 # --- CONFIGURATION ---
-JIRA_BASE_URL = "https://originenergypoc.atlassian.net"
-USERNAME_OR_EMAIL = "patrick@elegancegroup.co.nz"  # Your Jira account email
+JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL")
+USERNAME_OR_EMAIL = os.environ.get("JIRA_USERNAME")
 API_TOKEN = os.environ.get("JIRA_API_TOKEN")
 
 # Read TARGET_EMAIL from environment variables (set via the workflow)
