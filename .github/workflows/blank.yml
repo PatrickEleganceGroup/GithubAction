@@ -1,0 +1,12 @@
+name: Triggered Workflow
+
+on:
+  repository_dispatch:
+    types: [jira-trigger]
+
+jobs:
+  run-action:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print details
+        run: echo "Triggered from Jira for issue ${{ github.event.client_payload.issue_key }}"
