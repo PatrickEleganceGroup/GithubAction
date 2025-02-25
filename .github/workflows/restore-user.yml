@@ -47,13 +47,14 @@ jobs:
         run: |
           RESULT=$(cat result.txt)
           TICKET_URL="[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]"
-
-          # Remove ANSI sequences and ensure correct Jira wiki markup
-          FORMATTED_RESULT=$(echo "$RESULT" | sed -E "s|\x1B\[[0-9;]*[a-zA-Z]||g" | sed "s|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44|$TICKET_URL|g")
-
+          # Remove ANSI escape sequences from the result
+          CLEAN_RESULT=$(echo "$RESULT" | sed -E "s|\x1B\[[0-9;]*[a-zA-Z]||g")
+          # Replace the raw URL with the Jira wiki-style link using '#' as delimiter
+          FORMATTED_RESULT=$(echo "$CLEAN_RESULT" | sed "s#https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44#$TICKET_URL#g")
+          
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
           echo "${FORMATTED_RESULT}"
-
+          
           COMMENT_JSON=$(jq -n --arg msg "$FORMATTED_RESULT" '{
             "update": {
               "comment": [{
@@ -69,10 +70,10 @@ jobs:
               }]
             }
           }')
-
+          
           echo "Final JSON Payload:"
           echo "$COMMENT_JSON"
-
+          
           curl -X PUT -u "${JIRA_USERNAME}:${JIRA_API_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$COMMENT_JSON" \
@@ -82,6 +83,7 @@ jobs:
           JIRA_USERNAME: ${{ env.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
           JIRA_ISSUE_KEY: ${{ env.JIRA_ISSUE_KEY }}
+
 
 
 
