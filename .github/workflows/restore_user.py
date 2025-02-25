@@ -65,7 +65,7 @@ def main():
         message = (f"Your account was not found from the provided email address, {TARGET_EMAIL}. "
                    "This could be because the email address is hidden especially for External Users. "
                    "Please ensure this is the correct email and if it was correct and/or you're an External User, "
-                   f"please {hyperlink} ({ticket_url}).")
+                   f"please [log a ticket]({ticket_url}).")
         print(message)
         output_lines.append(message)
     else:
