@@ -20,7 +20,11 @@ BEARER_TOKEN = "ATCTT3xFfGN0BPQVTT4W1STZKHJMEEUr8LkoK_5HqjmtAcKWE5REtelLpufRTeW4
 
 def fetch_account_id():
     auth = (USERNAME_OR_EMAIL, API_TOKEN)
-    headers = {"Accept": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "test-agent",
+        "X-Atlassian-Token": "nocheck"
+    }
     start_at = 0
     max_results = 50
     found_account_id = None
