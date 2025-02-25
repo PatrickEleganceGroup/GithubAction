@@ -48,9 +48,16 @@ jobs:
           RESULT=$(cat result.txt | jq -Rs .)  # Escape newlines and special characters
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
           echo "${RESULT}"
+          
+          # Convert result into Atlassian Document Format
+          COMMENT_JSON=$(jq -n --arg msg "$RESULT" '{"update": {"comment": [{"add": {"body": {"type": "doc","version": 1,"content": [{"type": "paragraph","content": [{"type": "text","text": $msg}]}]}}}]}}')
+
+          echo "Final JSON Payload:"
+          echo "$COMMENT_JSON"
+
           curl -X PUT -u "${JIRA_USERNAME}:${JIRA_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"update\": {\"comment\": [{\"add\": {\"body\": ${RESULT}}}]}}" \
+            --data "$COMMENT_JSON" \
             "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}"
         env:
           JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
