@@ -48,7 +48,7 @@ jobs:
           RESULT=$(cat result.txt)
           TICKET_URL="[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]"
           
-          # Replace raw URL with Jira wiki-style link
+          # Replace raw URL with Jira wiki-style link safely
           FORMATTED_RESULT=$(echo "$RESULT" | sed "s|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44|$TICKET_URL|g")
 
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
@@ -82,4 +82,5 @@ jobs:
           JIRA_USERNAME: ${{ env.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
           JIRA_ISSUE_KEY: ${{ env.JIRA_ISSUE_KEY }}
+
 
