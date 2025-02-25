@@ -1,12 +1,41 @@
-name: Triggered Workflow
+name: Restore User Access
 
 on:
   repository_dispatch:
-    types: [jira-trigger]
+    types: [restore-user]
 
 jobs:
-  run-action:
+  restore_user:
     runs-on: ubuntu-latest
+    env:
+      # Pass TARGET_EMAIL and Jira issue key from the event payload
+      TARGET_EMAIL: ${{ github.event.client_payload.target_email }}
+      JIRA_ISSUE_KEY: ${{ github.event.client_payload.jira_issue_key }}
+      # Jira credentials and base URL from secrets
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
     steps:
-      - name: Print details
-        run: echo "Triggered from Jira for issue ${{ github.event.client_payload.issue_key }}"
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Run restore user script
+        run: |
+          python restore_user.py
+        env:
+          TARGET_EMAIL: ${{ env.TARGET_EMAIL }}
+
+      - name: Update Jira ticket with result
+        run: |
+          RESULT=$(cat result.txt)
+          echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
+          echo "${RESULT}"
+          curl -X PUT -u "${JIRA_USERNAME}:${JIRA_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"update\": {\"comment\": [{\"add\": {\"body\": \"${RESULT}\"}}]}}" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}"
