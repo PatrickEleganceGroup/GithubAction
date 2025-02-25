@@ -46,15 +46,21 @@ jobs:
       - name: Update Jira ticket with result
         run: |
           RESULT=$(cat result.txt)
-          TICKET_URL="[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]"
-          # Remove ANSI escape sequences from the result
-          CLEAN_RESULT=$(echo "$RESULT" | sed -E "s|\x1B\[[0-9;]*[a-zA-Z]||g")
-          # Replace the raw URL with the Jira wiki-style link using '#' as delimiter
-          FORMATTED_RESULT=$(echo "$CLEAN_RESULT" | sed "s#https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44#$TICKET_URL#g")
+          echo "Original RESULT:"
+          echo "$RESULT"
           
-          echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
-          echo "${FORMATTED_RESULT}"
+          # Remove all ANSI escape sequences (including OSC hyperlink sequences) using Perl
+          CLEAN_RESULT=$(echo "$RESULT" | perl -pe 's/\e\]8;;.*?\e\\//g; s/\e\[[0-9;]*[a-zA-Z]//g')
+          echo "Cleaned RESULT:"
+          echo "$CLEAN_RESULT"
           
+          # Replace the raw URL with the Jira Wiki-style link.
+          # Use '#' as delimiter so that slashes and pipes are not interpreted.
+          FORMATTED_RESULT=$(echo "$CLEAN_RESULT" | sed "s#https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44#[log a ticket|https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44]#g")
+          echo "Final FORMATTED_RESULT:"
+          echo "$FORMATTED_RESULT"
+          
+          # Build the JSON payload using the Atlassian Document Format for comments.
           COMMENT_JSON=$(jq -n --arg msg "$FORMATTED_RESULT" '{
             "update": {
               "comment": [{
@@ -63,7 +69,12 @@ jobs:
                     "type": "doc",
                     "version": 1,
                     "content": [
-                      {"type": "paragraph", "content": [{"type": "text","text": $msg}]}
+                      {
+                        "type": "paragraph", 
+                        "content": [
+                          {"type": "text", "text": $msg}
+                        ]
+                      }
                     ]
                   }
                 }
@@ -83,6 +94,7 @@ jobs:
           JIRA_USERNAME: ${{ env.JIRA_USERNAME }}
           JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
           JIRA_ISSUE_KEY: ${{ env.JIRA_ISSUE_KEY }}
+
 
 
 
