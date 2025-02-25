@@ -7,14 +7,6 @@ on:
 jobs:
   restore_user:
     runs-on: ubuntu-latest
-    env:
-      # Pass TARGET_EMAIL and Jira issue key from the event payload
-      TARGET_EMAIL: ${{ github.event.client_payload.target_email }}
-      JIRA_ISSUE_KEY: ${{ github.event.client_payload.jira_issue_key }}
-      # Jira credentials and base URL from secrets
-      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
-      JIRA_USERNAME: ${{ secrets.JIRA_USERNAME }}
-      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -24,11 +16,11 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install dependencies
+        run: pip install requests
+
       - name: Run restore user script
-        run: |
-          python restore_user.py
-        env:
-          TARGET_EMAIL: ${{ env.TARGET_EMAIL }}
+        run: python .github/workflows/restore_user.py
 
       - name: Update Jira ticket with result
         run: |
