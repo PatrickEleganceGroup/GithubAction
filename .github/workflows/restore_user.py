@@ -59,34 +59,26 @@ def main():
     account_id = fetch_account_id()
     if not account_id:
         ticket_url = "https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44"
-        # Output using Markdown syntax for a clickable link
-        message = (f"Your account was not found from the provided email address, {TARGET_EMAIL}. "
-                   "This could be because the email address is hidden especially for External Users. "
-                   "Please ensure this is the correct email and if it was correct and/or you're an External User, "
-                   f"please log a ticket: {ticket_url}.")
-        print(message)
+        message = (
+            f"Your account was not found from the provided email address, {TARGET_EMAIL}. "
+            "This could be because the email address is hidden especially for External Users. "
+            "Please ensure this is the correct email and if it was correct and/or you're an External User, "
+            f"please [log a ticket]({ticket_url})."
+        )
         output_lines.append(message)
     else:
         message = f"Found accountId: {account_id}"
-        print(message)
         output_lines.append(message)
         response = restore_access(account_id)
         response_message = f"Response Status: {response.status_code}"
-        print(response_message)
         output_lines.append(response_message)
         try:
             json_response = response.json()
             json_message = f"Response JSON: {json_response}"
-            print(json_message)
             output_lines.append(json_message)
         except ValueError:
             text_response = f"Response Text: {response.text}"
-            print(text_response)
             output_lines.append(text_response)
-    
-    # Instead of writing to a file, join the lines and print them as the final output
-    final_output = "\n".join(output_lines)
-    print(final_output)
 
 if __name__ == "__main__":
     main()
