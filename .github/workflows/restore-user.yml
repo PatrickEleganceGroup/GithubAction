@@ -10,6 +10,7 @@ jobs:
     env:
       JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
       JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
+      JIRA_BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
       JIRA_ISSUE_KEY: ${{ github.event.client_payload.jira_issue_key }}
       TARGET_EMAIL: ${{ github.event.client_payload.target_email }}
     steps:
@@ -27,21 +28,27 @@ jobs:
       - name: Debug Environment Variables
         run: |
           echo "JIRA_BASE_URL: $(echo -n $JIRA_BASE_URL | base64)"
-          echo "TOKEN LENGTH: ${#JIRA_BASIC_TOKEN}"
+          echo "Basic Token Length: ${#JIRA_BASIC_TOKEN}"
+          echo "Bearer Token Length: ${#JIRA_BEARER_TOKEN}"
         env:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
+          JIRA_BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
 
       - name: Run restore user script
-        run: python .github/workflows/restore_user.py
+        id: run_script
+        run: |
+          OUTPUT=$(python .github/workflows/restore_user.py)
+          echo "result=$OUTPUT" >> $GITHUB_OUTPUT
         env:
           TARGET_EMAIL: ${{ env.TARGET_EMAIL }}
           JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
+          JIRA_BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
 
       - name: Update Jira ticket with result
         run: |
-          RESULT=$(cat result.txt)
+          RESULT="${{ steps.run_script.outputs.result }}"
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
           echo "${RESULT}"
           
