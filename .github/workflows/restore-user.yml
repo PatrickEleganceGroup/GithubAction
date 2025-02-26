@@ -35,11 +35,8 @@ jobs:
           JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
           JIRA_BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
 
-      - name: Run restore user script
-        id: run_script
-        run: |
-          OUTPUT=$(python .github/workflows/restore_user.py)
-          echo "result=$OUTPUT" >> $GITHUB_OUTPUT
+      - name: Run restore user script and write output to file
+        run: python .github/workflows/restore_user.py > result.txt
         env:
           TARGET_EMAIL: ${{ env.TARGET_EMAIL }}
           JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
@@ -48,7 +45,7 @@ jobs:
 
       - name: Update Jira ticket with result
         run: |
-          RESULT="${{ steps.run_script.outputs.result }}"
+          RESULT=$(cat result.txt)
           echo "Updating Jira ticket ${JIRA_ISSUE_KEY} with result:"
           echo "${RESULT}"
           
