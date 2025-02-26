@@ -5,22 +5,21 @@ import requests
 
 # --- CONFIGURATION ---
 JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL")
-USERNAME_OR_EMAIL = os.environ.get("JIRA_USERNAME")
-API_TOKEN = os.environ.get("JIRA_API_TOKEN")
+# Basic token used for fetching users
+BASIC_TOKEN = os.environ.get("JIRA_BASIC_TOKEN")
+# Bearer token used for restoring access
+BEARER_TOKEN = os.environ.get("JIRA_BEARER_TOKEN")
 
-# Read TARGET_EMAIL from environment variables (set via the workflow)
+# Read TARGET_EMAIL from environment variables
 TARGET_EMAIL = os.environ.get("TARGET_EMAIL", "default@example.com")
 
 # Atlassian restore-access endpoint
 ORG_ID = "ffd0f976-d0a5-418f-8ca5-a1d67cadc185"
 RESTORE_ACCESS_URL_TEMPLATE = "https://api.atlassian.com/admin/v1/orgs/{org_id}/directory/users/{account_id}/restore-access"
 
-# Bearer token for restore-access endpoint
-BEARER_TOKEN = "ATCTT3xFfGN0BPQVTT4W1STZKHJMEEUr8LkoK_5HqjmtAcKWE5REtelLpufRTeW4sN6pHBSccDMoRBZmHvjvshdfPgdam-K0ghsqjt_Vj44kJzMDtxuPl4eLXN68BUYFA6PE28mb9DTNch7WkVzallRnyxu8yTaAzOaLDgkq5UcIKqZttGNJp98=2208A72D"
-
 def fetch_account_id():
-    auth = (USERNAME_OR_EMAIL, API_TOKEN)
     headers = {
+        "Authorization": f"Basic {BASIC_TOKEN}",
         "Accept": "application/json",
         "User-Agent": "test-agent",
         "X-Atlassian-Token": "nocheck"
@@ -31,7 +30,7 @@ def fetch_account_id():
 
     while True:
         url = f"{JIRA_BASE_URL}/rest/api/3/users/search?startAt={start_at}&maxResults={max_results}"
-        response = requests.get(url, headers=headers, auth=auth)
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         users = response.json()
         if not users:
@@ -60,12 +59,11 @@ def main():
     account_id = fetch_account_id()
     if not account_id:
         ticket_url = "https://prudential-ps.atlassian.net/servicedesk/customer/portal/6/group/10/create/44"
-        # ANSI hyperlink sequence (if supported)
-        hyperlink = f"\033]8;;{ticket_url}\033\\log a ticket\033]8;;\033\\"
+        # Output using Markdown syntax for a clickable link
         message = (f"Your account was not found from the provided email address, {TARGET_EMAIL}. "
                    "This could be because the email address is hidden especially for External Users. "
                    "Please ensure this is the correct email and if it was correct and/or you're an External User, "
-                   f"please [log a ticket]({ticket_url}).")
+                   f"please log a ticket: {ticket_url}.")
         print(message)
         output_lines.append(message)
     else:
@@ -85,9 +83,10 @@ def main():
             text_response = f"Response Text: {response.text}"
             print(text_response)
             output_lines.append(text_response)
-    # Write output to a file for use in subsequent workflow steps
-    with open("result.txt", "w") as f:
-        f.write("\n".join(output_lines))
+    
+    # Instead of writing to a file, join the lines and print them as the final output
+    final_output = "\n".join(output_lines)
+    print(final_output)
 
 if __name__ == "__main__":
     main()
