@@ -80,5 +80,9 @@ def main():
             text_response = f"Response Text: {response.text}"
             output_lines.append(text_response)
 
+    # Print only the final combined output once.
+    final_output = "\n".join(output_lines)
+    print(final_output)
+
 if __name__ == "__main__":
     main()
