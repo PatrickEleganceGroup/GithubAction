@@ -34,8 +34,8 @@ def get_users_in_group(jira_site, basic_auth_header, group_name):
     return users
 
 def main():
-    jira_site = os.environ.get("JIRA_SITE")
-    basic_auth = os.environ.get("BASIC_AUTH")  # Already in form: "Basic dGhpc2lzc2VjcmV0"
+    jira_site = "https://prudential-ps.atlassian.net"
+    basic_auth = os.environ.get("JIRA_BASIC_AUTH")  # Already in form: "Basic dGhpc2lzc2VjcmV0"
     project_key = os.environ.get("PROJECT_KEY")
     issue_key = os.environ.get("ISSUE_KEY")
 
