@@ -1,14 +1,8 @@
 name: Jira Group Users
 
 on:
-  workflow_dispatch:
-    inputs:
-      projectKey:
-        description: "Project key from Atlassian Automation (e.g. ABC)"
-        required: true
-      issueKey:
-        description: "Jira issue key to comment on (e.g. ABC-123)"
-        required: true
+  repository_dispatch:
+    types: [jira_group_users]
 
 jobs:
   retrieve-and-comment:
@@ -28,13 +22,7 @@ jobs:
       - name: Run script to get users and post comment
         run: python .github/workflows/jira_group_users.py
         env:
-          # These inputs come from the workflow_dispatch event
-          PROJECT_KEY: ${{ github.event.inputs.projectKey }}
-          ISSUE_KEY: ${{ github.event.inputs.issueKey }}
-
-          # This is your pre-encoded Basic token, stored as a GitHub secret
-          # For example, secret name: JIRA_BASIC_AUTH
+          PROJECT_KEY: ${{ github.event.client_payload.projectKey }}
+          ISSUE_KEY: ${{ github.event.client_payload.issueKey }}
           BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
-
-          # The base Jira domain
           JIRA_SITE: "https://prudential-ps.atlassian.net"
