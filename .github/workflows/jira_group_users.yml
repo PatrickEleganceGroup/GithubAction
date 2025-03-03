@@ -25,12 +25,28 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run script to get users and post comment
+      # DEBUG STEP: print environment variables to confirm they are set
+      - name: Debug environment variables
+        run: |
+          echo "PROJECT_KEY => ${PROJECT_KEY}"
+          echo "ISSUE_KEY => ${ISSUE_KEY}"
+          
+          echo "BASIC_AUTH => ${BASIC_AUTH}"
+          echo "Length of BASIC_AUTH => ${#BASIC_AUTH}"
+          
+          # (Optional) If you'd prefer not to print the token, 
+          # you can show a partial snippet or only the length.
+        env:
+          PROJECT_KEY: ${{ github.event.inputs.projectKey }}
+          ISSUE_KEY: ${{ github.event.inputs.issueKey }}
+          BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
+
+      - name: Run script
         run: python .github/workflows/jira_group_users.py
         env:
-          # The inputs come from "workflow_dispatch" inputs
           PROJECT_KEY: ${{ github.event.inputs.projectKey }}
           ISSUE_KEY: ${{ github.event.inputs.issueKey }}
 
-          # Pre-encoded basic auth token
+          # Note: This must match EXACTLY the variable name your Python script expects.
+          # If the script uses os.environ.get("BASIC_AUTH"), keep this as BASIC_AUTH.
           BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
