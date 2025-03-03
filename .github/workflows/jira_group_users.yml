@@ -26,7 +26,7 @@ jobs:
         run: pip install requests
 
       - name: Run script to get users and post comment
-        run: python scripts/jira_group_users.py
+        run: python .github/workflows/jira_group_users.py
         env:
           # These inputs come from the workflow_dispatch event
           PROJECT_KEY: ${{ github.event.inputs.projectKey }}
