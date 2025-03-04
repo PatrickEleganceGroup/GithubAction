@@ -25,21 +25,15 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      # DEBUG STEP: print environment variables to confirm they are set
-      - name: Debug environment variables
-        run: |
-          echo "PROJECT_KEY => ${PROJECT_KEY}"
-          echo "ISSUE_KEY => ${ISSUE_KEY}"
-          
-          echo "BASIC_AUTH => ${BASIC_AUTH}"
-          echo "Length of BASIC_AUTH => ${#BASIC_AUTH}"
-          
-          # (Optional) If you'd prefer not to print the token, 
-          # you can show a partial snippet or only the length.
         env:
           PROJECT_KEY: ${{ github.event.inputs.projectKey }}
           ISSUE_KEY: ${{ github.event.inputs.issueKey }}
+
           BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
+          BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
+
+          # If you prefer to store ORG_ID in secrets, do: ${{ secrets.ORG_ID }}  
+          ORG_ID: "b4235a52-bd04-12a0-j718-68bd06255171"
 
       - name: Run script
         run: python .github/workflows/jira_group_users.py
@@ -47,6 +41,8 @@ jobs:
           PROJECT_KEY: ${{ github.event.inputs.projectKey }}
           ISSUE_KEY: ${{ github.event.inputs.issueKey }}
 
-          # Note: This must match EXACTLY the variable name your Python script expects.
-          # If the script uses os.environ.get("BASIC_AUTH"), keep this as BASIC_AUTH.
           BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
+          BEARER_TOKEN: ${{ secrets.JIRA_BEARER_TOKEN }}
+
+          # Same ORG_ID as above
+          ORG_ID: "b4235a52-bd04-12a0-j718-68bd06255171"
