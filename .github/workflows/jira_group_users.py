@@ -44,7 +44,7 @@ def fetch_emails_for_accounts(org_id, bearer_token, account_ids):
     """
     url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
     headers = {
-        "Authorization": f"Bearer {bearer_token}",
+        "Authorization": f"{bearer_token}",
         "Content-Type": "application/json"
     }
 
