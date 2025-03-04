@@ -93,45 +93,35 @@ def main():
     # ---------------------------
     # 2) Collect group members
     # ---------------------------
-    group_contributors      = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
-    group_ext_contributors  = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
-    group_managers          = f"ATLASSIAN-{project_key}-MANAGERS"
-    group_viewers           = f"ATLASSIAN-{project_key}-VIEWERS"
-    group_ext_viewers       = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
+    group_contributors     = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
+    group_ext_contributors = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
+    group_managers         = f"ATLASSIAN-{project_key}-MANAGERS"
+    group_viewers          = f"ATLASSIAN-{project_key}-VIEWERS"
+    group_ext_viewers      = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
 
-    managers            = get_users_in_group(jira_site, jira_headers, group_managers)
-    contributors_int    = get_users_in_group(jira_site, jira_headers, group_contributors)
-    contributors_ext    = get_users_in_group(jira_site, jira_headers, group_ext_contributors)
-    viewers_int         = get_users_in_group(jira_site, jira_headers, group_viewers)
-    viewers_ext         = get_users_in_group(jira_site, jira_headers, group_ext_viewers)
+    managers         = get_users_in_group(jira_site, jira_headers, group_managers)
+    contributors_int = get_users_in_group(jira_site, jira_headers, group_contributors)
+    contributors_ext = get_users_in_group(jira_site, jira_headers, group_ext_contributors)
+    viewers_int      = get_users_in_group(jira_site, jira_headers, group_viewers)
+    viewers_ext      = get_users_in_group(jira_site, jira_headers, group_ext_viewers)
 
-    # Merge sets
+    # Merge lists
     all_contributors = contributors_int + contributors_ext
     all_viewers      = viewers_int + viewers_ext
 
-    # Gather all unique accountIds
-    unique_account_ids = set()
-    for user in managers + all_contributors + all_viewers:
-        if user["accountId"]:
-            unique_account_ids.add(user["accountId"])
+    # Collect all unique accountIds across all roles
+    unique_account_ids = set(u["accountId"] for u in (managers + all_contributors + all_viewers) if u["accountId"])
 
     # ---------------------------
     # 3) Fetch Emails in Bulk
     # ---------------------------
-    # The admin API accepts up to 1000 accountIds in one POST. 
-    # If there's more than 1000, you'd have to chunk them up.
-    # For simplicity, assume it's less or break it up if needed.
-
     email_map = {}
     account_ids_list = list(unique_account_ids)
-    # (Optional) If length > 1000, chunk it up in calls. 
-    # Skipping chunk logic for brevity.
+    if account_ids_list:  # Only fetch if not empty
+        emails_chunk = fetch_emails_for_accounts(org_id, bearer_token, account_ids_list)
+        email_map.update(emails_chunk)
 
-    # Single call
-    emails_chunk = fetch_emails_for_accounts(org_id, bearer_token, account_ids_list)
-    email_map.update(emails_chunk)
-
-    # Now we can add the email to each user
+    # Attach emails to each user dict
     def attach_email(user_list):
         for user in user_list:
             acct_id = user.get("accountId")
@@ -142,36 +132,114 @@ def main():
     attach_email(all_viewers)
 
     # ---------------------------
-    # 4) Build tables
+    # 4) Build ADF comment
     # ---------------------------
-    def format_role_section(role_name, user_list):
-        lines = [role_name]
-        # Sort by displayName for consistent ordering
-        sorted_users = sorted(user_list, key=lambda x: x["displayName"].lower())
-        for u in sorted_users:
-            display = u["displayName"]
-            email   = u.get("emailAddress", "")
-            lines.append(f"{display}|{email}")
-        return "\n".join(lines)
+    # We'll create an Atlassian Document Format "doc" with three sections: 
+    # a heading + table for Managers, Contributors, Viewers.
+    doc_content = []
+    
+    # Manager Section
+    doc_content.append(heading_paragraph("Managers"))
+    doc_content.append(make_user_table(managers))
 
-    managers_section     = format_role_section("Managers", managers)
-    contributors_section = format_role_section("Contributors", all_contributors)
-    viewers_section      = format_role_section("Viewers", all_viewers)
+    # Contributors Section
+    doc_content.append(heading_paragraph("Contributors"))
+    doc_content.append(make_user_table(all_contributors))
 
-    final_comment_body = "\n\n".join([managers_section, contributors_section, viewers_section])
+    # Viewers Section
+    doc_content.append(heading_paragraph("Viewers"))
+    doc_content.append(make_user_table(all_viewers))
+
+    # The top-level structure for an ADF doc
+    adf_body = {
+        "type": "doc",
+        "version": 1,
+        "content": doc_content
+    }
 
     # ---------------------------
     # 5) Post the comment to Jira
     # ---------------------------
+    # For an ADF comment, the JSON must be:
+    # { "body": { "type": "doc", "version": 1, "content": [ ... ] } }
     comment_url = f"{jira_site}/rest/api/3/issue/{issue_key}/comment"
-    payload = {"body": final_comment_body}
+    payload = {"body": adf_body}
 
     response = requests.post(comment_url, headers=jira_headers, json=payload)
     if not response.ok:
         print("Jira response text:", response.text)
     response.raise_for_status()
 
-    print(f"Successfully posted comment to {issue_key} with {len(unique_account_ids)} users processed.")
+    print(f"Successfully posted ADF comment to {issue_key} with {len(unique_account_ids)} users processed.")
+
+def heading_paragraph(text):
+    """
+    Returns a simple paragraph node with text, e.g. "Managers", "Contributors", etc.
+    """
+    return {
+        "type": "paragraph",
+        "content": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
+    }
+
+def make_user_table(users):
+    """
+    Builds an ADF table node for the given list of user dicts 
+    (each having 'displayName' and 'emailAddress').
+    First row is header: Name | Email
+    Then one row per user.
+    """
+    # Sort by displayName for consistency
+    sorted_users = sorted(users, key=lambda x: x["displayName"].lower())
+
+    # Build rows: first the header row
+    rows = [{
+        "type": "tableRow",
+        "content": [
+            table_cell_paragraph("Name"),
+            table_cell_paragraph("Email")
+        ]
+    }]
+
+    # Then user rows
+    for u in sorted_users:
+        display = u["displayName"]
+        email   = u.get("emailAddress", "")
+        rows.append({
+            "type": "tableRow",
+            "content": [
+                table_cell_paragraph(display),
+                table_cell_paragraph(email)
+            ]
+        })
+
+    return {
+        "type": "table",
+        "content": rows
+    }
+
+def table_cell_paragraph(cell_text):
+    """
+    Creates a single tableCell with a paragraph containing cell_text.
+    """
+    return {
+        "type": "tableCell",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": cell_text
+                    }
+                ]
+            }
+        ]
+    }
 
 if __name__ == "__main__":
     main()
