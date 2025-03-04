@@ -42,7 +42,7 @@ def fetch_email_for_account(org_id, bearer_token, account_id):
     Endpoint: POST /admin/v1/orgs/<orgId>/users/search
     Body: { "accountIds": [<accountId>], "expand": ["EMAIL"] }
     
-    Returns the user's email as a string, or "" if not found.
+    Returns the user's email as a string, or "" if not found or not visible.
     """
     url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
     headers = {
@@ -58,8 +58,7 @@ def fetch_email_for_account(org_id, bearer_token, account_id):
     resp = requests.post(url, headers=headers, json=payload)
     resp.raise_for_status()
 
-    data = resp.json()  # Should look like { "data": [ { "accountId": "...", "email": "..." } ], "links": {} }
-    # We only asked for 1 accountId, so we expect up to 1 user in data["data"]
+    data = resp.json()  # e.g. { "data": [ { "accountId": "...", "email": "..." } ], "links": {} }
     if "data" in data and len(data["data"]) > 0:
         user_obj = data["data"][0]
         return user_obj.get("email") or ""
@@ -77,7 +76,6 @@ def main():
     issue_key   = os.environ.get("ISSUE_KEY")
 
     # The Atlassian org ID for the admin API
-    # e.g. "b4235a52-bd04-12a0-j718-68bd06255171"
     org_id = os.environ.get("ORG_ID", "b4235a52-bd04-12a0-j718-68bd06255171")
 
     if not all([jira_site, basic_auth, bearer_token, project_key, issue_key, org_id]):
@@ -116,7 +114,6 @@ def main():
     # ---------------------------
     # 3) Fetch Emails (one call per accountId)
     # ---------------------------
-    # For each accountId, do a single request.
     email_map = {}
     for acct_id in unique_account_ids:
         try:
@@ -139,23 +136,20 @@ def main():
     # ---------------------------
     # 4) Build ADF comment
     # ---------------------------
-    # We'll create an Atlassian Document Format "doc" with three sections: 
-    # a heading + table for Managers, Contributors, Viewers.
     doc_content = []
     
     # Manager Section
-    doc_content.append(heading_paragraph("Managers"))
+    doc_content.append(make_heading("Managers", level=2))
     doc_content.append(make_user_table(managers))
 
     # Contributors Section
-    doc_content.append(heading_paragraph("Contributors"))
+    doc_content.append(make_heading("Contributors", level=2))
     doc_content.append(make_user_table(all_contributors))
 
     # Viewers Section
-    doc_content.append(heading_paragraph("Viewers"))
+    doc_content.append(make_heading("Viewers", level=2))
     doc_content.append(make_user_table(all_viewers))
 
-    # The top-level structure for an ADF doc
     adf_body = {
         "type": "doc",
         "version": 1,
@@ -175,12 +169,13 @@ def main():
 
     print(f"Successfully posted ADF comment to {issue_key}.")
 
-def heading_paragraph(text):
+def make_heading(text, level=2):
     """
-    Returns a simple paragraph node with text, e.g. 'Managers', 'Contributors', etc.
+    Creates an ADF heading node with the given text and level (h2 by default).
     """
     return {
-        "type": "paragraph",
+        "type": "heading",
+        "attrs": {"level": level},
         "content": [
             {
                 "type": "text",
@@ -194,24 +189,32 @@ def make_user_table(users):
     Builds an ADF table node for the given list of user dicts 
     (each having 'displayName' and 'emailAddress').
     First row is header: Name | Email
-    Then one row per user.
+    Then one row per user. 
+    If emailAddress is empty, we show the accountId instead.
     """
     # Sort by displayName for consistency
     sorted_users = sorted(users, key=lambda x: x["displayName"].lower())
 
-    # Build rows: first the header row
-    rows = [{
+    rows = []
+    # Header row
+    rows.append({
         "type": "tableRow",
         "content": [
             table_cell_paragraph("Name"),
             table_cell_paragraph("Email")
         ]
-    }]
+    })
 
-    # Then user rows
+    # Each user row
     for u in sorted_users:
         display = u["displayName"]
         email   = u.get("emailAddress", "")
+        acct_id = u.get("accountId", "")
+
+        # If email is empty, use accountId
+        if not email:
+            email = acct_id
+
         rows.append({
             "type": "tableRow",
             "content": [
