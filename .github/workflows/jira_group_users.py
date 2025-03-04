@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import math
 
 def get_users_in_group(jira_site, basic_auth_header, group_name):
     """
@@ -35,14 +36,16 @@ def get_users_in_group(jira_site, basic_auth_header, group_name):
 
     return users
 
-def fetch_email_for_account(org_id, bearer_token, account_id):
+def fetch_emails_in_batches(org_id, bearer_token, account_ids):
     """
-    Calls the Atlassian admin API to fetch user details (including email) 
-    for a single accountId.
+    Calls the Atlassian admin API in batches of up to 100 account IDs per request.
     Endpoint: POST /admin/v1/orgs/<orgId>/users/search
-    Body: { "accountIds": [<accountId>], "expand": ["EMAIL"] }
-    
-    Returns the user's email as a string, or "" if not found or not visible.
+    Body: { "accountIds": [...], "expand": ["EMAIL"] }
+
+    Returns a dict mapping accountId -> email, e.g. 
+      { "712020:abc123": "user@example.com", ... }
+
+    If a user has no email or is not found, the email is "".
     """
     url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
     headers = {
@@ -50,20 +53,32 @@ def fetch_email_for_account(org_id, bearer_token, account_id):
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "accountIds": [account_id],
-        "expand": ["EMAIL"]
-    }
+    email_map = {}
+    chunk_size = 100
 
-    resp = requests.post(url, headers=headers, json=payload)
-    resp.raise_for_status()
+    for i in range(0, len(account_ids), chunk_size):
+        chunk = account_ids[i : i + chunk_size]
 
-    data = resp.json()  # e.g. { "data": [ { "accountId": "...", "email": "..." } ], "links": {} }
-    if "data" in data and len(data["data"]) > 0:
-        user_obj = data["data"][0]
-        return user_obj.get("email") or ""
-    else:
-        return ""
+        payload = {
+            "accountIds": chunk,
+            "expand": ["EMAIL"]
+        }
+
+        # Make the bulk request for this chunk
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+
+        data = resp.json()  # { "data": [ { "accountId": "...", "email": "..." } ], ... }
+        for entry in data.get("data", []):
+            acct_id = entry.get("accountId")
+            email   = entry.get("email") or ""
+            if acct_id:
+                email_map[acct_id] = email
+
+        # If any account wasn't returned, it won't appear in data["data"],
+        # so they remain absent from email_map. We'll handle that by defaulting to "" later.
+
+    return email_map
 
 def main():
     # ---------------------------
@@ -112,17 +127,13 @@ def main():
     print(f"Found {len(unique_account_ids)} unique accountIds to fetch emails for...")
 
     # ---------------------------
-    # 3) Fetch Emails (one call per accountId)
+    # 3) Fetch Emails in Batches
     # ---------------------------
-    email_map = {}
-    for acct_id in unique_account_ids:
-        try:
-            email_map[acct_id] = fetch_email_for_account(org_id, bearer_token, acct_id)
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to fetch email for {acct_id}: {e}")
-            email_map[acct_id] = ""
+    account_ids_list = list(unique_account_ids)
+    email_map = fetch_emails_in_batches(org_id, bearer_token, account_ids_list)
 
-    # Attach emails
+    # For any ID not in email_map, default to ""
+    # (However, if the admin API didn't return an account for any reason, we won't have it in email_map.)
     def attach_email(user_list):
         for user in user_list:
             acct_id = user.get("accountId")
@@ -167,7 +178,7 @@ def main():
         print("Jira response text:", response.text)
     response.raise_for_status()
 
-    print(f"Successfully posted ADF comment to {issue_key}.")
+    print(f"Successfully posted ADF comment to {issue_key} with {len(unique_account_ids)} accounts processed.")
 
 def make_heading(text, level=2):
     """
@@ -192,7 +203,6 @@ def make_user_table(users):
     Then one row per user. 
     If emailAddress is empty, we show the accountId instead.
     """
-    # Sort by displayName for consistency
     sorted_users = sorted(users, key=lambda x: x["displayName"].lower())
 
     rows = []
@@ -211,7 +221,7 @@ def make_user_table(users):
         email   = u.get("emailAddress", "")
         acct_id = u.get("accountId", "")
 
-        # If email is empty, use accountId
+        # If email is empty, fallback to accountId
         if not email:
             email = acct_id
 
@@ -229,9 +239,6 @@ def make_user_table(users):
     }
 
 def table_cell_paragraph(cell_text):
-    """
-    Creates a single tableCell with a paragraph containing cell_text.
-    """
     return {
         "type": "tableCell",
         "content": [
