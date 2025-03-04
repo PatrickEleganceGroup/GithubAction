@@ -1,15 +1,15 @@
 import os
-import json
 import requests
+import json
 
-def get_users_in_group(jira_site, headers, group_name):
+def get_users_in_group(jira_site, basic_auth_header, group_name):
     """
-    Example stub for pagination logic. 
-    Returns a set of tuples (displayName, emailAddress).
+    Retrieve all users (accountId, displayName) in the given group, using Jira's group/member endpoint.
+    Returns a list of dict: { "accountId": ..., "displayName": ... }
     """
     start_at = 0
     max_results = 50
-    users = set()
+    users = []
 
     while True:
         url = f"{jira_site}/rest/api/3/group/member"
@@ -18,16 +18,16 @@ def get_users_in_group(jira_site, headers, group_name):
             "startAt": start_at,
             "maxResults": max_results
         }
-        resp = requests.get(url, headers=headers, params=params)
+        resp = requests.get(url, headers=basic_auth_header, params=params)
         resp.raise_for_status()
-
         data = resp.json()
-        for user in data.get("values", []):
-            display_name = user.get("displayName", "")
-            email_addr = user.get("emailAddress", "")
-            users.add((display_name, email_addr))
 
-        # If isLast is True, no more pages
+        for user in data.get("values", []):
+            users.append({
+                "accountId": user.get("accountId"),
+                "displayName": user.get("displayName", "")
+            })
+
         if data.get("isLast", True):
             break
 
@@ -35,151 +35,143 @@ def get_users_in_group(jira_site, headers, group_name):
 
     return users
 
-def main():
-    # Hard-coded site or read from env, your choice
-    jira_site = os.environ.get("JIRA_SITE", "https://prudential-ps.atlassian.net")
-    basic_auth = os.environ.get("BASIC_AUTH")  # e.g. "Basic <encoded string>"
-    project_key = os.environ.get("PROJECT_KEY")
-    issue_key = os.environ.get("ISSUE_KEY")
-
-    # Make sure everything is provided
-    if not all([jira_site, basic_auth, project_key, issue_key]):
-        raise ValueError("Missing one or more required env vars: "
-                         "JIRA_SITE, BASIC_AUTH, PROJECT_KEY, ISSUE_KEY.")
-
+def fetch_emails_for_accounts(org_id, bearer_token, account_ids):
+    """
+    Calls the Atlassian admin API to fetch user details (including email) by accountIds.
+    Endpoint: POST /admin/v1/orgs/<orgId>/users/search
+    Body: { "accountIds": [...], "expand": ["EMAIL"] }
+    Returns a dict mapping accountId -> email, e.g. { "712020:abc123": "user@example.com", ... }
+    """
+    url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
     headers = {
+        "Authorization": f"Bearer {bearer_token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "accountIds": account_ids,   # array of all accountIds
+        "expand": ["EMAIL"]
+    }
+
+    resp = requests.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+
+    data = resp.json()  # Should look like { "data": [ { "accountId": "...", "email": "..." } ], "links": {} }
+    email_map = {}
+    for entry in data.get("data", []):
+        acct_id = entry.get("accountId")
+        email = entry.get("email")  # or might be None if not visible
+        if acct_id:
+            email_map[acct_id] = email
+
+    return email_map
+
+def main():
+    # ---------------------------
+    # 1) Read environment vars
+    # ---------------------------
+    jira_site   = os.environ.get("JIRA_SITE") or "https://prudential-ps.atlassian.net"
+    basic_auth  = os.environ.get("BASIC_AUTH")  # e.g. "Basic <base64string>"
+    bearer_token = os.environ.get("BEARER_TOKEN")  # used for the admin API
+    project_key = os.environ.get("PROJECT_KEY")
+    issue_key   = os.environ.get("ISSUE_KEY")
+
+    # The Atlassian org ID for the admin API
+    # e.g. "b4235a52-bd04-12a0-j718-68bd06255171"
+    org_id = os.environ.get("ORG_ID", "b4235a52-bd04-12a0-j718-68bd06255171")
+
+    if not all([jira_site, basic_auth, bearer_token, project_key, issue_key, org_id]):
+        raise ValueError("Missing one or more required env vars: "
+                         "JIRA_SITE, BASIC_AUTH, BEARER_TOKEN, PROJECT_KEY, ISSUE_KEY, ORG_ID")
+
+    # Headers for Jira calls
+    jira_headers = {
         "Authorization": basic_auth,
         "Content-Type": "application/json"
     }
 
-    # Example group names
-    group_contributors = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
-    group_ext_contributors = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
-    group_managers = f"ATLASSIAN-{project_key}-MANAGERS"
-    group_viewers = f"ATLASSIAN-{project_key}-VIEWERS"
-    group_ext_viewers = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
+    # ---------------------------
+    # 2) Collect group members
+    # ---------------------------
+    group_contributors      = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
+    group_ext_contributors  = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
+    group_managers          = f"ATLASSIAN-{project_key}-MANAGERS"
+    group_viewers           = f"ATLASSIAN-{project_key}-VIEWERS"
+    group_ext_viewers       = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
 
-    # Retrieve sets of users
-    managers = get_users_in_group(jira_site, headers, group_managers)
-    contributors_internal = get_users_in_group(jira_site, headers, group_contributors)
-    contributors_external = get_users_in_group(jira_site, headers, group_ext_contributors)
-    viewers_internal = get_users_in_group(jira_site, headers, group_viewers)
-    viewers_external = get_users_in_group(jira_site, headers, group_ext_viewers)
+    managers            = get_users_in_group(jira_site, jira_headers, group_managers)
+    contributors_int    = get_users_in_group(jira_site, jira_headers, group_contributors)
+    contributors_ext    = get_users_in_group(jira_site, jira_headers, group_ext_contributors)
+    viewers_int         = get_users_in_group(jira_site, jira_headers, group_viewers)
+    viewers_ext         = get_users_in_group(jira_site, jira_headers, group_ext_viewers)
 
-    all_contributors = contributors_internal.union(contributors_external)
-    all_viewers = viewers_internal.union(viewers_external)
+    # Merge sets
+    all_contributors = contributors_int + contributors_ext
+    all_viewers      = viewers_int + viewers_ext
 
-    # Create the ADF comment body
-    adf_comment_body = create_adf_comment_body(
-        managers=managers,
-        contributors=all_contributors,
-        viewers=all_viewers
-    )
+    # Gather all unique accountIds
+    unique_account_ids = set()
+    for user in managers + all_contributors + all_viewers:
+        if user["accountId"]:
+            unique_account_ids.add(user["accountId"])
 
-    # Prepare the payload
+    # ---------------------------
+    # 3) Fetch Emails in Bulk
+    # ---------------------------
+    # The admin API accepts up to 1000 accountIds in one POST. 
+    # If there's more than 1000, you'd have to chunk them up.
+    # For simplicity, assume it's less or break it up if needed.
+
+    email_map = {}
+    account_ids_list = list(unique_account_ids)
+    # (Optional) If length > 1000, chunk it up in calls. 
+    # Skipping chunk logic for brevity.
+
+    # Single call
+    emails_chunk = fetch_emails_for_accounts(org_id, bearer_token, account_ids_list)
+    email_map.update(emails_chunk)
+
+    # Now we can add the email to each user
+    def attach_email(user_list):
+        for user in user_list:
+            acct_id = user.get("accountId")
+            user["emailAddress"] = email_map.get(acct_id, "")
+
+    attach_email(managers)
+    attach_email(all_contributors)
+    attach_email(all_viewers)
+
+    # ---------------------------
+    # 4) Build tables
+    # ---------------------------
+    def format_role_section(role_name, user_list):
+        lines = [role_name]
+        # Sort by displayName for consistent ordering
+        sorted_users = sorted(user_list, key=lambda x: x["displayName"].lower())
+        for u in sorted_users:
+            display = u["displayName"]
+            email   = u.get("emailAddress", "")
+            lines.append(f"{display}|{email}")
+        return "\n".join(lines)
+
+    managers_section     = format_role_section("Managers", managers)
+    contributors_section = format_role_section("Contributors", all_contributors)
+    viewers_section      = format_role_section("Viewers", all_viewers)
+
+    final_comment_body = "\n\n".join([managers_section, contributors_section, viewers_section])
+
+    # ---------------------------
+    # 5) Post the comment to Jira
+    # ---------------------------
     comment_url = f"{jira_site}/rest/api/3/issue/{issue_key}/comment"
-    payload = {
-        "body": adf_comment_body
-    }
+    payload = {"body": final_comment_body}
 
-    # Debug prints before sending
-    print("== DEBUG INFO ==")
-    print("Constructed comment URL:", comment_url)
-    print("Payload being sent (ADF doc):")
-    print(json.dumps(payload, indent=2))
-
-    # Send the request
-    response = requests.post(comment_url, headers=headers, json=payload)
-
-    # Debug the response
-    print("Response status code:", response.status_code)
-    print("Response text:", response.text)
-
-    # Raise exception if 4xx/5xx
+    response = requests.post(comment_url, headers=jira_headers, json=payload)
+    if not response.ok:
+        print("Jira response text:", response.text)
     response.raise_for_status()
 
-    print(f"== SUCCESS: Posted ADF comment to '{issue_key}'! ==")
-
-def create_adf_comment_body(managers, contributors, viewers):
-    """
-    Builds an ADF doc with three sections (Managers, Contributors, Viewers),
-    each section containing a heading + table of Name/Email.
-    """
-    return {
-        "type": "doc",
-        "version": 1,
-        "content": [
-            heading_paragraph("Managers"),
-            make_user_table(managers),
-            heading_paragraph("Contributors"),
-            make_user_table(contributors),
-            heading_paragraph("Viewers"),
-            make_user_table(viewers),
-        ]
-    }
-
-def heading_paragraph(heading_text):
-    """
-    Returns a simple paragraph with text (e.g. 'Managers').
-    """
-    return {
-        "type": "paragraph",
-        "content": [
-            {
-                "type": "text",
-                "text": heading_text
-            }
-        ]
-    }
-
-def make_user_table(users):
-    """
-    Returns an ADF 'table' node for a set of (displayName, emailAddress) tuples.
-    First row is header: Name | Email
-    Each subsequent row is one user.
-    """
-    rows = []
-    # Header row
-    rows.append({
-        "type": "tableRow",
-        "content": [
-            table_cell_paragraph("Name"),
-            table_cell_paragraph("Email")
-        ]
-    })
-    # One row per user
-    for (display_name, email) in sorted(users):
-        rows.append({
-            "type": "tableRow",
-            "content": [
-                table_cell_paragraph(display_name),
-                table_cell_paragraph(email)
-            ]
-        })
-
-    return {
-        "type": "table",
-        "content": rows
-    }
-
-def table_cell_paragraph(cell_text):
-    """
-    Creates a single table cell with one paragraph of text.
-    """
-    return {
-        "type": "tableCell",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": cell_text
-                    }
-                ]
-            }
-        ]
-    }
+    print(f"Successfully posted comment to {issue_key} with {len(unique_account_ids)} users processed.")
 
 if __name__ == "__main__":
     main()
