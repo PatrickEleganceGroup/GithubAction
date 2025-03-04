@@ -35,12 +35,14 @@ def get_users_in_group(jira_site, basic_auth_header, group_name):
 
     return users
 
-def fetch_emails_for_accounts(org_id, bearer_token, account_ids):
+def fetch_email_for_account(org_id, bearer_token, account_id):
     """
-    Calls the Atlassian admin API to fetch user details (including email) by accountIds.
+    Calls the Atlassian admin API to fetch user details (including email) 
+    for a single accountId.
     Endpoint: POST /admin/v1/orgs/<orgId>/users/search
-    Body: { "accountIds": [...], "expand": ["EMAIL"] }
-    Returns a dict mapping accountId -> email, e.g. { "712020:abc123": "user@example.com", ... }
+    Body: { "accountIds": [<accountId>], "expand": ["EMAIL"] }
+    
+    Returns the user's email as a string, or "" if not found.
     """
     url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
     headers = {
@@ -49,7 +51,7 @@ def fetch_emails_for_accounts(org_id, bearer_token, account_ids):
     }
 
     payload = {
-        "accountIds": account_ids,   # array of all accountIds
+        "accountIds": [account_id],
         "expand": ["EMAIL"]
     }
 
@@ -57,14 +59,12 @@ def fetch_emails_for_accounts(org_id, bearer_token, account_ids):
     resp.raise_for_status()
 
     data = resp.json()  # Should look like { "data": [ { "accountId": "...", "email": "..." } ], "links": {} }
-    email_map = {}
-    for entry in data.get("data", []):
-        acct_id = entry.get("accountId")
-        email = entry.get("email")  # or might be None if not visible
-        if acct_id:
-            email_map[acct_id] = email
-
-    return email_map
+    # We only asked for 1 accountId, so we expect up to 1 user in data["data"]
+    if "data" in data and len(data["data"]) > 0:
+        user_obj = data["data"][0]
+        return user_obj.get("email") or ""
+    else:
+        return ""
 
 def main():
     # ---------------------------
@@ -111,21 +111,26 @@ def main():
 
     # Collect all unique accountIds across all roles
     unique_account_ids = set(u["accountId"] for u in (managers + all_contributors + all_viewers) if u["accountId"])
+    print(f"Found {len(unique_account_ids)} unique accountIds to fetch emails for...")
 
     # ---------------------------
-    # 3) Fetch Emails in Bulk
+    # 3) Fetch Emails (one call per accountId)
     # ---------------------------
+    # For each accountId, do a single request.
     email_map = {}
-    account_ids_list = list(unique_account_ids)
-    if account_ids_list:  # Only fetch if not empty
-        emails_chunk = fetch_emails_for_accounts(org_id, bearer_token, account_ids_list)
-        email_map.update(emails_chunk)
+    for acct_id in unique_account_ids:
+        try:
+            email_map[acct_id] = fetch_email_for_account(org_id, bearer_token, acct_id)
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to fetch email for {acct_id}: {e}")
+            email_map[acct_id] = ""
 
-    # Attach emails to each user dict
+    # Attach emails
     def attach_email(user_list):
         for user in user_list:
             acct_id = user.get("accountId")
-            user["emailAddress"] = email_map.get(acct_id, "")
+            if acct_id:
+                user["emailAddress"] = email_map.get(acct_id, "")
 
     attach_email(managers)
     attach_email(all_contributors)
@@ -160,8 +165,6 @@ def main():
     # ---------------------------
     # 5) Post the comment to Jira
     # ---------------------------
-    # For an ADF comment, the JSON must be:
-    # { "body": { "type": "doc", "version": 1, "content": [ ... ] } }
     comment_url = f"{jira_site}/rest/api/3/issue/{issue_key}/comment"
     payload = {"body": adf_body}
 
@@ -170,11 +173,11 @@ def main():
         print("Jira response text:", response.text)
     response.raise_for_status()
 
-    print(f"Successfully posted ADF comment to {issue_key} with {len(unique_account_ids)} users processed.")
+    print(f"Successfully posted ADF comment to {issue_key}.")
 
 def heading_paragraph(text):
     """
-    Returns a simple paragraph node with text, e.g. "Managers", "Contributors", etc.
+    Returns a simple paragraph node with text, e.g. 'Managers', 'Contributors', etc.
     """
     return {
         "type": "paragraph",
