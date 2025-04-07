@@ -23,11 +23,7 @@ jobs:
 
       - name: Set up Google Cloud Credentials
         run: |
-          printf '%s' "${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON }}" > ${{ github.workspace }}/gcloud-service-key.json
-
-      - name: Debug GCloud Credentials
-        run: |
-          head -n 5 ${{ github.workspace }}/gcloud-service-key.json
+          echo "${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_B64 }}" | base64 --decode > ${{ github.workspace }}/gcloud-service-key.json
 
       - name: Run audit script
         env:
