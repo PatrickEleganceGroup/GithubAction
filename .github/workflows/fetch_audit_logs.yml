@@ -32,4 +32,4 @@ jobs:
           GOOGLE_CLOUD_FOLDER: ${{ secrets.GOOGLE_CLOUD_FOLDER }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcloud-service-key.json
         run: |
-          python fetch_audit_logs.py
+          python .github/workflows/fetch_audit_logs.py
