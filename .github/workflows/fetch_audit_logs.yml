@@ -1,0 +1,35 @@
+name: Fetch Atlassian Audit Logs
+
+on:
+  schedule:
+    - cron: '0 0 1 */6 *'
+  workflow_dispatch:
+
+jobs:
+  fetch_audit_logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install requests google-cloud-storage python-dateutil
+
+      - name: Set up Google Cloud Credentials
+        run: |
+          echo "${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_JSON }}" > ${{ github.workspace }}/gcloud-service-key.json
+
+      - name: Run audit script
+        env:
+          JIRA_BASIC_TOKEN: ${{ secrets.JIRA_BASIC_TOKEN }}
+          GOOGLE_CLOUD_BUCKET: ${{ secrets.GOOGLE_CLOUD_BUCKET }}
+          GOOGLE_CLOUD_FOLDER: ${{ secrets.GOOGLE_CLOUD_FOLDER }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcloud-service-key.json
+        run: |
+          python fetch_audit_logs.py
