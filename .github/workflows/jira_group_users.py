@@ -193,7 +193,7 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 
 # ----------------- Issue Transition ----------------
 
-def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151"):
+def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121"):
     """
     Transitions the issue using the provided transition ID.
     Sends payload: { "transition": { "id": "5" } }.
@@ -281,7 +281,7 @@ def main():
     attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_ids, comment_text, public=True)
 
     # Transition the issue (using transition ID "5"; update as necessary)
-    transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151")
+    transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121")
 
     print(f"Done. PDF '{pdf_filename}' attached to {issue_key} and the issue transitioned to Done.")
 
