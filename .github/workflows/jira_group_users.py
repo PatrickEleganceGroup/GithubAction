@@ -208,7 +208,13 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 
 def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151"):
     """
-    Transitions the issue to Done using a hard-coded transition ID.
+    Transitions the issue using the provided transition ID.
+    The payload is sent as:
+      {
+        "transition": {
+          "id": "5"
+        }
+      }
     """
     url = f"{jira_site}/rest/api/3/issue/{issue_key}/transitions"
     payload = {"transition": {"id": transition_id}}
@@ -218,7 +224,7 @@ def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="15
     }
     resp = requests.post(url, headers=headers, json=payload, timeout=30)
     resp.raise_for_status()
-    print(f"Issue {issue_key} transitioned to Done using transition ID {transition_id}.")
+    print(f"Issue {issue_key} transitioned using transition ID {transition_id}.")
 
 # ----------------- Main ----------------
 
