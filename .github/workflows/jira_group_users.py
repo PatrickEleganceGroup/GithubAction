@@ -192,7 +192,7 @@ def main():
         )
 
     # Hardcoded service desk ID
-    service_desk_id = 10061
+    service_desk_id = 6
 
     # Headers for normal GET/POST to /rest/api/3
     jira_headers = {
