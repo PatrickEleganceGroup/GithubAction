@@ -285,7 +285,7 @@ def main():
 
     # JSM Attachment Flow: Upload PDF as temporary and attach with a comment.
     temp_ids = upload_temp_file_jsm(jira_site, basic_auth, service_desk_id, pdf_filename)
-    comment_text = "The current Project Members have been attached with group info in a table."
+    comment_text = "The current Project Members have been attached."
     attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_ids, comment_text, public=True)
 
     # Transition the issue: use transition ID "121" and set Resolution = Done.
