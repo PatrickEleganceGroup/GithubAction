@@ -23,7 +23,7 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install requests fpdf2
+        run: pip install requests fpdf
 
         env:
           PROJECT_KEY: ${{ github.event.inputs.projectKey }}
