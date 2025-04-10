@@ -46,7 +46,7 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
     email_map = {}
     chunk_size = 100
     for i in range(0, len(account_ids), chunk_size):
-        chunk = account_ids[i: i + chunk_size]
+        chunk = account_ids[i:i + chunk_size]
         payload = {"accountIds": chunk, "expand": ["EMAIL"]}
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
@@ -59,26 +59,42 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
     return email_map
 
 # --------------- PDF Table Helpers (using built-in Helvetica) ------------------
+
 def get_text_lines(pdf, text, width):
     """
     Splits text into a list of lines that fit within 'width' using simple word wrap.
-    The text is first converted to Latin-1.
+    If a single word is too long (e.g. an email address with no spaces), it is broken 
+    letter-by-letter into segments that fit.
     """
     text = to_latin1(text)
     words = text.split(' ')
     lines = []
     current_line = ""
+    
     for word in words:
-        test_line = word if current_line == "" else current_line + " " + word
-        if pdf.get_string_width(test_line) > width:
-            if current_line == "":
-                lines.append(word)
+        # If the word alone is too long, break it into parts.
+        if pdf.get_string_width(word) > width:
+            # If there's a partially built line, save it first.
+            if current_line:
+                lines.append(current_line)
                 current_line = ""
-            else:
+            part = ""
+            for char in word:
+                if pdf.get_string_width(part + char) <= width:
+                    part += char
+                else:
+                    if part:
+                        lines.append(part)
+                    part = char
+            if part:
+                lines.append(part)
+        else:
+            test_line = word if current_line == "" else current_line + " " + word
+            if pdf.get_string_width(test_line) > width:
                 lines.append(current_line)
                 current_line = word
-        else:
-            current_line = test_line
+            else:
+                current_line = test_line
     if current_line:
         lines.append(current_line)
     return lines
@@ -86,26 +102,26 @@ def get_text_lines(pdf, text, width):
 def draw_table_row(pdf, row, col_widths, line_height):
     """
     Draws a table row with wrapped text.
-    All cells in the row are padded so they all have the same height.
-    Checks for available space on the current page and adds a new page if needed.
+    Every cell is padded so all cells in the row have the same height.
+    If the row won't fit on the current page, a new page is started.
     """
-    # Calculate line counts per cell and the maximum
+    # Pre-calculate line counts for each cell.
     cell_line_counts = [len(get_text_lines(pdf, cell, w - 2)) for cell, w in zip(row, col_widths)]
     max_lines = max(cell_line_counts) if cell_line_counts else 1
     row_height = max_lines * line_height
 
-    # If not enough space on current page, add a page.
+    # Check if there's enough space, if not add a new page.
     if pdf.get_y() + row_height > pdf.page_break_trigger:
         pdf.add_page()
 
     x_start = pdf.get_x()
     y_start = pdf.get_y()
-    
-    # Write each cell's wrapped text with padding.
+
+    # Output each cell with wrapped text.
     for i, cell in enumerate(row):
         x = pdf.get_x()
-        padded_lines = get_text_lines(pdf, cell, col_widths[i] - 2)
-        padded_lines += [""] * (max_lines - len(padded_lines))
+        cell_lines = get_text_lines(pdf, cell, col_widths[i] - 2)
+        padded_lines = cell_lines + [""] * (max_lines - len(cell_lines))
         cell_text = "\n".join(padded_lines)
         pdf.multi_cell(col_widths[i], line_height, cell_text, border=0)
         pdf.set_xy(x + col_widths[i], y_start)
@@ -133,7 +149,7 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
     """
     pdf = FPDF()
     pdf.add_page()
-    # Set a lower bottom margin to reduce extra blank pages.
+    # Use a reduced bottom margin.
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.set_font("Helvetica", "", 10)
     
@@ -147,7 +163,6 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
         pdf.set_font("Helvetica", "", 10)
         header = ["Name", "Email", "Groups"]
         draw_table_header(pdf, header, col_widths, line_height)
-        # Sort users alphabetically by displayName.
         sorted_users = sorted(users, key=lambda u: u.get("displayName", "").lower())
         for u in sorted_users:
             name = u.get("displayName", "")
@@ -156,7 +171,6 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
             groups = user_groups.get(acct_id, set())
             group_str = ", ".join(sorted(groups))
             draw_table_row(pdf, [name, email, group_str], col_widths, line_height)
-        # Use a smaller vertical gap after each table.
         pdf.ln(3)
 
     section_table("Managers", managers)
@@ -201,7 +215,7 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 # ----------------- Issue Transition ----------------
 def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121"):
     """
-    Transitions the issue using the provided transition ID and sets the Resolution field to "Done".
+    Transitions the issue using the provided transition ID and sets Resolution to "Done".
     Sends payload:
       {
         "transition": {"id": "121"},
@@ -221,10 +235,10 @@ def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="12
 
 # ----------------- Main ----------------
 def main():
-    # Read environment variables; these need to be set in your GitHub Actions environment.
+    # Read environment variables from your GitHub Actions environment.
     jira_site = os.environ.get("JIRA_SITE", "https://prudential-ps.atlassian.net")
     basic_auth = os.environ.get("BASIC_AUTH")          # e.g., "Basic <base64string>"
-    bearer_token = os.environ.get("BEARER_TOKEN")        # Used for the admin API
+    bearer_token = os.environ.get("BEARER_TOKEN")        # For admin API
     project_key = os.environ.get("PROJECT_KEY")          # e.g., "GTP00"
     issue_key = os.environ.get("ISSUE_KEY")              # e.g., "GTP00-123"
     org_id = os.environ.get("ORG_ID", "b4235a52-bd04-12a0-j718-68bd06255171")
@@ -252,7 +266,7 @@ def main():
     all_contributors = contrib + extern
     all_viewers = view + view_ext
 
-    # Build a dictionary mapping accountId -> set of groups.
+    # Build dictionary mapping accountId -> set of groups.
     user_groups = {}
     def add_group(user_list, group_name):
         for u in user_list:
@@ -283,12 +297,12 @@ def main():
     pdf_filename = f"{project_key}-UserList.pdf"
     generate_pdf_with_wrapping_tables(pdf_filename, managers, all_contributors, all_viewers, user_groups)
 
-    # JSM Attachment Flow: Upload PDF as temporary and attach with a comment.
+    # JSM Attachment Flow: Upload the PDF as a temporary file and attach with a comment.
     temp_ids = upload_temp_file_jsm(jira_site, basic_auth, service_desk_id, pdf_filename)
-    comment_text = "The current Project Members have been attached."
+    comment_text = "The current Project Members have been attached with group info in a table."
     attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_ids, comment_text, public=True)
 
-    # Transition the issue: use transition ID "121" and set Resolution = Done.
+    # Transition the issue: use transition ID "121" and update Resolution to "Done".
     transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121")
 
     print(f"Done. PDF '{pdf_filename}' attached to {issue_key} and the issue transitioned to Done with Resolution set.")
