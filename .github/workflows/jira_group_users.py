@@ -14,28 +14,20 @@ def get_users_in_group(jira_site, basic_auth_header, group_name):
     start_at = 0
     max_results = 50
     users = []
-
     while True:
         url = f"{jira_site}/rest/api/3/group/member"
-        params = {
-            "groupname": group_name,
-            "startAt": start_at,
-            "maxResults": max_results
-        }
+        params = {"groupname": group_name, "startAt": start_at, "maxResults": max_results}
         resp = requests.get(url, headers=basic_auth_header, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-
         for user in data.get("values", []):
             users.append({
                 "accountId": user.get("accountId"),
                 "displayName": user.get("displayName", "")
             })
-
         if data.get("isLast", True):
             break
         start_at += max_results
-
     return users
 
 def fetch_emails_in_batches(org_id, bearer_token, account_ids):
@@ -44,15 +36,11 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
     Returns a dict { accountId -> email }.
     """
     url = f"https://api.atlassian.com/admin/v1/orgs/{org_id}/users/search"
-    headers = {
-        "Authorization": bearer_token,
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": bearer_token, "Content-Type": "application/json"}
     email_map = {}
     chunk_size = 100
-
     for i in range(0, len(account_ids), chunk_size):
-        chunk = account_ids[i: i + chunk_size]
+        chunk = account_ids[i:i + chunk_size]
         payload = {"accountIds": chunk, "expand": ["EMAIL"]}
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
@@ -62,14 +50,13 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
             email = entry.get("email") or ""
             if acct_id:
                 email_map[acct_id] = email
-
     return email_map
 
 # --------------- PDF Table Helpers ------------------
 
 def get_text_lines(pdf, text, width):
     """
-    Splits text into a list of lines that fit within 'width' using simple word wrap.
+    Split text into a list of lines that fit within 'width' using simple word wrap.
     """
     words = text.split(' ')
     lines = []
@@ -78,7 +65,6 @@ def get_text_lines(pdf, text, width):
         test_line = word if current_line == "" else current_line + " " + word
         if pdf.get_string_width(test_line) > width:
             if current_line == "":
-                # single word longer than width, add it as is
                 lines.append(word)
                 current_line = ""
             else:
@@ -92,29 +78,31 @@ def get_text_lines(pdf, text, width):
 
 def draw_table_row(pdf, row, col_widths, line_height):
     """
-    Draws a row where each cell wraps its text.
-    The row height is computed from the maximum number of wrapped lines among the cells.
-    Each cell is drawn with a border.
+    Draws a table row with each cell wrapped.
+    All cells in the row are padded so that they have the same height.
     """
-    # Compute number of lines for each cell
-    cell_line_counts = []
-    for i, cell_text in enumerate(row):
-        lines = get_text_lines(pdf, cell_text, col_widths[i] - 2)  # subtract margin
-        cell_line_counts.append(len(lines))
-    max_lines = max(cell_line_counts) if cell_line_counts else 1
+    # Split each cell's text into lines
+    cell_lines = [get_text_lines(pdf, cell, w - 2) for cell, w in zip(row, col_widths)]
+    max_lines = max(len(lines) for lines in cell_lines)
     row_height = max_lines * line_height
-
     x_start = pdf.get_x()
     y_start = pdf.get_y()
-    for i, cell_text in enumerate(row):
+    
+    # For each cell, compose the full text with padding (empty lines as needed)
+    for i, lines in enumerate(cell_lines):
         x = pdf.get_x()
         y = pdf.get_y()
-        # Draw the text with multi_cell so it wraps.
+        padded = lines + [""] * (max_lines - len(lines))
+        cell_text = "\n".join(padded)
         pdf.multi_cell(col_widths[i], line_height, cell_text, border=0)
-        # Reset position for the next column in the same row.
-        pdf.set_xy(x + col_widths[i], y)
-        # Draw cell border
-        pdf.rect(x, y, col_widths[i], row_height)
+        # Reset x for the next column in the same row
+        pdf.set_xy(x + col_widths[i], y_start)
+    
+    # Draw borders for each cell in the row
+    x = x_start
+    for w in col_widths:
+        pdf.rect(x, y_start, w, row_height)
+        x += w
     pdf.set_xy(x_start, y_start + row_height)
 
 def draw_table_header(pdf, headers, col_widths, line_height):
@@ -127,14 +115,14 @@ def draw_table_header(pdf, headers, col_widths, line_height):
 
 def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, viewers, user_groups):
     """
-    Creates a PDF with three sections (Managers, Contributors, Viewers) formatted as tables.
+    Creates a PDF with sections for Managers, Contributors, and Viewers formatted as tables.
     Each table has columns: Name, Email, Groups.
     """
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font("Arial", "", 10)
-
+    
     # Define column widths (total should fit A4 width)
     col_widths = [45, 55, 90]
     line_height = 6
@@ -145,7 +133,7 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
         pdf.set_font("Arial", "", 10)
         header = ["Name", "Email", "Groups"]
         draw_table_header(pdf, header, col_widths, line_height)
-        # Sort users by display name for consistency
+        # Sort users by displayName
         sorted_users = sorted(users, key=lambda x: x.get("displayName", "").lower())
         for u in sorted_users:
             name = u.get("displayName", "")
@@ -159,7 +147,7 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
     section_table("Managers", managers)
     section_table("Contributors", contributors)
     section_table("Viewers", viewers)
-
+    
     pdf.output(pdf_filename)
     print(f"Generated PDF: {pdf_filename}")
 
@@ -171,11 +159,7 @@ def upload_temp_file_jsm(jira_site, basic_auth, service_desk_id, pdf_filename):
     Returns a list of temporaryAttachmentId strings.
     """
     url = f"{jira_site}/rest/servicedeskapi/servicedesk/{service_desk_id}/attachTemporaryFile"
-    headers = {
-        "Authorization": basic_auth,
-        "X-Atlassian-Token": "no-check",
-        "Accept": "application/json"
-    }
+    headers = {"Authorization": basic_auth, "X-Atlassian-Token": "no-check", "Accept": "application/json"}
     with open(pdf_filename, "rb") as f:
         files = {"file": (pdf_filename, f, "application/pdf")}
         resp = requests.post(url, headers=headers, files=files, timeout=30)
@@ -190,16 +174,8 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
     Permanently attaches the temporary file(s) to a JSM request and adds a comment.
     """
     url = f"{jira_site}/rest/servicedeskapi/request/{issue_key}/attachment"
-    headers = {
-        "Authorization": basic_auth,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    payload = {
-        "additionalComment": {"body": comment_text},
-        "public": public,
-        "temporaryAttachmentIds": temp_attachment_ids
-    }
+    headers = {"Authorization": basic_auth, "Content-Type": "application/json", "Accept": "application/json"}
+    payload = {"additionalComment": {"body": comment_text}, "public": public, "temporaryAttachmentIds": temp_attachment_ids}
     resp = requests.post(url, headers=headers, json=payload, timeout=30)
     resp.raise_for_status()
     print(f"Successfully attached PDF and added comment to {issue_key}.")
@@ -209,21 +185,18 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151"):
     """
     Transitions the issue using the provided transition ID.
-    The payload is sent as:
-      {
-        "transition": {
-          "id": "5"
-        }
-      }
+    Sends a payload of: { "transition": { "id": "5" } }
+    If a 400 error is returned, prints the response text.
     """
     url = f"{jira_site}/rest/api/3/issue/{issue_key}/transitions"
     payload = {"transition": {"id": transition_id}}
-    headers = {
-        "Authorization": basic_auth,
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": basic_auth, "Content-Type": "application/json"}
     resp = requests.post(url, headers=headers, json=payload, timeout=30)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError:
+        print("Transition error:", resp.text)
+        raise
     print(f"Issue {issue_key} transitioned using transition ID {transition_id}.")
 
 # ----------------- Main ----------------
@@ -241,37 +214,37 @@ def main():
 
     if not all([jira_site, basic_auth, bearer_token, project_key, issue_key, org_id]):
         raise ValueError("Missing one or more required env vars: JIRA_SITE, BASIC_AUTH, BEARER_TOKEN, PROJECT_KEY, ISSUE_KEY, ORG_ID")
-
+    
     jira_headers = {"Authorization": basic_auth, "Content-Type": "application/json"}
 
     # 2) Collect group members
     group_managers    = f"ATLASSIAN-{project_key}-MANAGERS"
-    group_contrib_int = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
-    group_contrib_ext = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
-    group_view_int    = f"ATLASSIAN-{project_key}-VIEWERS"
-    group_view_ext    = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
-
+    group_contrib    = f"ATLASSIAN-{project_key}-CONTRIBUTORS"
+    group_extern     = f"ATLASSIAN-{project_key}-EXTERNAL-CONTRIBUTORS"
+    group_view       = f"ATLASSIAN-{project_key}-VIEWERS"
+    group_view_ext   = f"ATLASSIAN-{project_key}-EXTERNAL-VIEWERS"
+    
     managers = get_users_in_group(jira_site, jira_headers, group_managers)
-    contrib_int = get_users_in_group(jira_site, jira_headers, group_contrib_int)
-    contrib_ext = get_users_in_group(jira_site, jira_headers, group_contrib_ext)
-    view_int = get_users_in_group(jira_site, jira_headers, group_view_int)
+    contrib = get_users_in_group(jira_site, jira_headers, group_contrib)
+    extern = get_users_in_group(jira_site, jira_headers, group_extern)
+    view = get_users_in_group(jira_site, jira_headers, group_view)
     view_ext = get_users_in_group(jira_site, jira_headers, group_view_ext)
+    
+    all_contributors = contrib + extern
+    all_viewers = view + view_ext
 
-    all_contributors = contrib_int + contrib_ext
-    all_viewers = view_int + view_ext
-
-    # 3) Build a dictionary mapping accountId to set of groups
+    # 3) Build a dictionary mapping accountId to set of group names
     user_groups = {}
     def add_group(user_list, group_name):
         for u in user_list:
             acct_id = u.get("accountId")
             if acct_id:
                 user_groups.setdefault(acct_id, set()).add(group_name)
-    add_group(managers,    group_managers)
-    add_group(contrib_int, group_contrib_int)
-    add_group(contrib_ext, group_contrib_ext)
-    add_group(view_int,    group_view_int)
-    add_group(view_ext,    group_view_ext)
+    add_group(managers, group_managers)
+    add_group(contrib, group_contrib)
+    add_group(extern, group_extern)
+    add_group(view, group_view)
+    add_group(view_ext, group_view_ext)
 
     # 4) Fetch Emails
     unique_ids = {u["accountId"] for u in (managers + all_contributors + all_viewers) if u.get("accountId")}
@@ -293,10 +266,10 @@ def main():
 
     # 6) JSM Attachment Flow:
     temp_ids = upload_temp_file_jsm(jira_site, basic_auth, service_desk_id, pdf_filename)
-    comment_text = "The current Project Members have been attached with group info in a table."
+    comment_text = "The current Project Members have been attached."
     attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_ids, comment_text, public=True)
 
-    # 7) Transition the issue to Done
+    # 7) Transition the issue (update transition_id as required; e.g., "5")
     transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151")
 
     print(f"Done. PDF '{pdf_filename}' attached to {issue_key} and the issue transitioned to Done.")
