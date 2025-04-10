@@ -206,7 +206,7 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 
 # ----------------- Issue Transition ----------------
 
-def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="10010"):
+def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="151"):
     """
     Transitions the issue to Done using a hard-coded transition ID.
     """
