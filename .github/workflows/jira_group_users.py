@@ -6,7 +6,7 @@ from fpdf import FPDF
 
 # ----------------- Helper for text conversion ------------------
 def to_latin1(text):
-    """Converts a Unicode string to Latin-1, replacing any unsupported characters."""
+    """Converts a Unicode string to Latin-1, replacing unsupported characters."""
     if not isinstance(text, str):
         text = str(text)
     return text.encode("latin-1", errors="replace").decode("latin-1")
@@ -64,7 +64,7 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
 def get_text_lines(pdf, text, width):
     """
     Splits text into a list of lines that fit within 'width' using simple word wrap.
-    The text is converted to Latin-1.
+    The text is first converted to Latin-1.
     """
     text = to_latin1(text)
     words = text.split(' ')
@@ -89,23 +89,31 @@ def draw_table_row(pdf, row, col_widths, line_height):
     """
     Draws a table row with wrapped text.
     All cells in the row are padded so that they have the same height.
+    If there is not enough vertical space for the entire row,
+    a new page is started.
     """
-    # Split each cell's text into lines.
-    cell_lines = [get_text_lines(pdf, cell, w - 2) for cell, w in zip(row, col_widths)]
-    max_lines = max(len(lines) for lines in cell_lines)
+    # Pre-calculate each cell's line count and the maximum
+    cell_line_counts = [len(get_text_lines(pdf, cell, w - 2)) for cell, w in zip(row, col_widths)]
+    max_lines = max(cell_line_counts) if cell_line_counts else 1
     row_height = max_lines * line_height
+
+    # Check for page break: if the row won't fit on the current page, add a new page.
+    if pdf.get_y() + row_height > pdf.page_break_trigger:
+        pdf.add_page()
+
     x_start = pdf.get_x()
     y_start = pdf.get_y()
     
-    # Write each cell with padded wrapped text.
-    for i, lines in enumerate(cell_lines):
+    # For each cell, prepare wrapped text (padded with blank lines) and output it.
+    for i, cell in enumerate(row):
         x = pdf.get_x()
-        padded_lines = lines + [""] * (max_lines - len(lines))
+        padded_lines = get_text_lines(pdf, cell, col_widths[i] - 2)
+        padded_lines += [""] * (max_lines - len(padded_lines))
         cell_text = "\n".join(padded_lines)
         pdf.multi_cell(col_widths[i], line_height, cell_text, border=0)
         pdf.set_xy(x + col_widths[i], y_start)
     
-    # Draw borders for each cell
+    # Draw a border around each cell.
     x = x_start
     for w in col_widths:
         pdf.rect(x, y_start, w, row_height)
@@ -122,16 +130,16 @@ def draw_table_header(pdf, headers, col_widths, line_height):
 
 def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, viewers, user_groups):
     """
-    Creates a PDF with sections for Managers, Contributors, and Viewers,
-    formatted as tables with columns: Name, Email, Groups.
-    Uses the built-in Helvetica font (converted to Latin-1).
+    Creates a PDF with sections for Managers, Contributors, and Viewers
+    formatted as tables. Each table has columns: Name, Email, Groups.
+    Uses the built-in Helvetica font (with text converted to Latin-1).
     """
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font("Helvetica", "", 10)
     
-    # Define column widths and line height
+    # Define column widths and line height.
     col_widths = [45, 55, 90]
     line_height = 6
 
@@ -141,6 +149,7 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
         pdf.set_font("Helvetica", "", 10)
         header = ["Name", "Email", "Groups"]
         draw_table_header(pdf, header, col_widths, line_height)
+        # Sort users alphabetically by displayName.
         sorted_users = sorted(users, key=lambda u: u.get("displayName", "").lower())
         for u in sorted_users:
             name = u.get("displayName", "")
@@ -195,12 +204,15 @@ def attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_attachmen
 
 def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121"):
     """
-    Transitions the issue using the provided transition ID.
-    Sends payload: { "transition": { "id": "5" } }.
-    Prints the response text on error.
+    Transitions the issue using the provided transition ID and also sets the Resolution field to "Done".
+    Sends payload:
+        {
+          "transition": {"id": "121"},
+          "fields": {"resolution": {"name": "Done"}}
+        }
     """
     url = f"{jira_site}/rest/api/3/issue/{issue_key}/transitions"
-    payload = {"transition": {"id": transition_id}}
+    payload = {"transition": {"id": transition_id}, "fields": {"resolution": {"name": "Done"}}}
     headers = {"Authorization": basic_auth, "Content-Type": "application/json"}
     resp = requests.post(url, headers=headers, json=payload, timeout=30)
     try:
@@ -208,17 +220,17 @@ def transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="12
     except requests.HTTPError:
         print("Transition error:", resp.text)
         raise
-    print(f"Issue {issue_key} transitioned using transition ID {transition_id}.")
+    print(f"Issue {issue_key} transitioned using transition ID {transition_id} with Resolution Done.")
 
 # ----------------- Main ----------------
 
 def main():
-    # Read environment variables; set these in your GitHub Actions environment.
+    # Read environment variables; these should be set in your GitHub Actions environment.
     jira_site = os.environ.get("JIRA_SITE", "https://prudential-ps.atlassian.net")
     basic_auth = os.environ.get("BASIC_AUTH")          # e.g., "Basic <base64string>"
     bearer_token = os.environ.get("BEARER_TOKEN")        # Used for the admin API
-    project_key = os.environ.get("PROJECT_KEY")          # e.g., "EGT00"
-    issue_key = os.environ.get("ISSUE_KEY")              # e.g., "EGT00-123"
+    project_key = os.environ.get("PROJECT_KEY")          # e.g., "GTP00"
+    issue_key = os.environ.get("ISSUE_KEY")              # e.g., "GTP00-123"
     org_id = os.environ.get("ORG_ID", "b4235a52-bd04-12a0-j718-68bd06255171")
     # Hardcoded JSM service desk ID (from your listing, e.g., 6)
     service_desk_id = 6
@@ -244,7 +256,7 @@ def main():
     all_contributors = contrib + extern
     all_viewers = view + view_ext
 
-    # Build dictionary mapping accountId -> set of groups.
+    # Build a dictionary mapping accountId -> set of groups.
     user_groups = {}
     def add_group(user_list, group_name):
         for u in user_list:
@@ -271,7 +283,7 @@ def main():
     attach_email(all_contributors)
     attach_email(all_viewers)
 
-    # Generate PDF; filename uses the project key (e.g., "EGT00-UserList.pdf")
+    # Generate PDF; filename uses the project key, e.g., "GTP00-UserList.pdf"
     pdf_filename = f"{project_key}-UserList.pdf"
     generate_pdf_with_wrapping_tables(pdf_filename, managers, all_contributors, all_viewers, user_groups)
 
@@ -280,10 +292,10 @@ def main():
     comment_text = "The current Project Members have been attached with group info in a table."
     attach_temp_file_to_request(jira_site, basic_auth, issue_key, temp_ids, comment_text, public=True)
 
-    # Transition the issue (using transition ID "5"; update as necessary)
+    # Transition the issue: use transition ID "121" and set Resolution = Done.
     transition_issue_to_done(jira_site, basic_auth, issue_key, transition_id="121")
 
-    print(f"Done. PDF '{pdf_filename}' attached to {issue_key} and the issue transitioned to Done.")
+    print(f"Done. PDF '{pdf_filename}' attached to {issue_key} and the issue transitioned to Done with Resolution set.")
 
 if __name__ == "__main__":
     main()
