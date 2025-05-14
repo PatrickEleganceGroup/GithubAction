@@ -1,9 +1,23 @@
 import os
 import requests
-import json
-import math
 from fpdf import FPDF
 
+# ----------------- Helper for breaking long words ------------------
+def break_long_word(pdf, word, width):
+    """
+    Breaks a single word into parts that each fit within 'width'.
+    """
+    parts = []
+    part = ""
+    for char in word:
+        if pdf.get_string_width(part + char) <= width:
+            part += char
+        else:
+            parts.append(part)
+            part = char
+    if part:
+        parts.append(part)
+    return parts
 
 # ----------------- Helper for text conversion ------------------
 def to_latin1(text):
@@ -11,7 +25,6 @@ def to_latin1(text):
     if not isinstance(text, str):
         text = str(text)
     return text.encode("latin-1", errors="replace").decode("latin-1")
-
 
 # ----------------- Data Collection ------------------
 
@@ -39,7 +52,6 @@ def get_users_in_group(jira_site, basic_auth_header, group_name):
         start_at += max_results
     return users
 
-
 def fetch_emails_in_batches(org_id, bearer_token, account_ids):
     """
     Retrieve emails for account IDs in batches.
@@ -62,52 +74,42 @@ def fetch_emails_in_batches(org_id, bearer_token, account_ids):
                 email_map[acct_id] = to_latin1(email)
     return email_map
 
-
 # --------------- PDF Table Helpers (using built-in Helvetica) ------------------
 
 def get_text_lines(pdf, text, width):
     """
     Splits text into a list of lines that fit within 'width' using simple word wrap.
-    The text is first converted to Latin-1.
-    If a single word (such as an email address) is too long, it is broken
-    letter-by-letter.
+    The text is first converted to Latin-1. Long words get split letter-by-letter.
     """
     text = to_latin1(text)
     words = text.split(' ')
     lines = []
     current_line = ""
     for word in words:
-        # Break word if it is too long for the column.
+        # If the word itself is too wide, break it up first
         if pdf.get_string_width(word) > width:
             if current_line:
                 lines.append(current_line)
                 current_line = ""
-            part = ""
-            for char in word:
-                if pdf.get_string_width(part + char) <= width:
-                    part += char
-                else:
-                    lines.append(part)
-                    part = char
-            if part:
+            for part in break_long_word(pdf, word, width):
                 lines.append(part)
         else:
-            test_line = word if current_line == "" else current_line + " " + word
+            test_line = word if not current_line else f"{current_line} {word}"
             if pdf.get_string_width(test_line) > width:
                 lines.append(current_line)
                 current_line = word
             else:
                 current_line = test_line
+
     if current_line:
         lines.append(current_line)
     return lines
 
-
 def draw_table_row(pdf, row, col_widths, line_height):
     """
     Draws a table row with wrapped text.
-    All cells in the row are padded so all cells have the same height.
-    If the row will not fit on the current page, a new page is added.
+    All cells are padded so they share the same height.
+    If the row won't fit on the current page, a new page is added.
     """
     cell_line_counts = [len(get_text_lines(pdf, cell, w - 2)) for cell, w in zip(row, col_widths)]
     max_lines = max(cell_line_counts) if cell_line_counts else 1
@@ -133,7 +135,6 @@ def draw_table_row(pdf, row, col_widths, line_height):
         x += w
     pdf.set_xy(x_start, y_start + row_height)
 
-
 def draw_table_header(pdf, headers, col_widths, line_height):
     """
     Draws the table header row in bold.
@@ -141,7 +142,6 @@ def draw_table_header(pdf, headers, col_widths, line_height):
     pdf.set_font("Helvetica", "B", 10)
     draw_table_row(pdf, headers, col_widths, line_height)
     pdf.set_font("Helvetica", "", 10)
-
 
 def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, viewers, user_groups):
     """
@@ -163,14 +163,12 @@ def generate_pdf_with_wrapping_tables(pdf_filename, managers, contributors, view
         pdf.set_font("Helvetica", "", 10)
         header = ["Name", "Email", "Groups"]
         draw_table_header(pdf, header, col_widths, line_height)
-        sorted_users = sorted(users, key=lambda u: u.get("displayName", "").lower())
-        for u in sorted_users:
+        for u in sorted(users, key=lambda u: u.get("displayName", "").lower()):
             name = u.get("displayName", "")
             acct_id = u.get("accountId", "")
-            email = u.get("emailAddress", "") or acct_id
-            groups = user_groups.get(acct_id, set())
-            group_str = ", ".join(sorted(groups))
-            draw_table_row(pdf, [name, email, group_str], col_widths, line_height)
+            email = u.get("emailAddress", acct_id)
+            groups = ", ".join(sorted(user_groups.get(acct_id, [])))
+            draw_table_row(pdf, [name, email, groups], col_widths, line_height)
         pdf.ln(3)
 
     section_table("Managers", managers)
